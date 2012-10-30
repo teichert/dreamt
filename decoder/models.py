@@ -1,7 +1,12 @@
 #!/usr/bin/env python
 # Simple translation model and language model data structures
 import sys
+import numpy
+import re
 from collections import namedtuple
+
+def string2array(s):
+  return numpy.array([float(v) for v in s.strip().split(' ') if v != ''])
 
 # A translation model is a dictionary where keys are tuples of French words
 # and values are lists of (english, logprob) named tuples. For instance,
@@ -11,11 +16,19 @@ from collections import namedtuple
 #   phrase(english='what has been', logprob=-0.301030009985)]
 # k is a pruning parameter: only the top k translations are kept for each f.
 phrase = namedtuple("phrase", "english, logprob")
-def TM(filename, k):
+def TM(filename, k, weights = "", dolog = False):
+  w = string2array(weights)
   sys.stderr.write("Reading translation model from %s...\n" % (filename,))
   tm = {}
+  print w
   for line in open(filename).readlines():
-    (f, e, logprob) = line.strip().split(" ||| ")
+    pieces = re.split(r" \|\|\| ", line.strip(), 3)
+    (f, e, featstring) = pieces[0:3]
+    features = string2array(featstring)
+    if dolog:
+      features = numpy.log(features)
+#    print features
+    logprob = features.dot(w) if len(weights) > 0 else sum(features)
     tm.setdefault(tuple(f.split()), []).append(phrase(e, float(logprob)))
   for f in tm: # prune all but top k translations
     tm[f].sort(key=lambda x: -x.logprob)
@@ -40,7 +53,8 @@ class LM:
     for line in open(filename):
       entry = line.strip().split("\t")
       if len(entry) > 1 and entry[0] != "ngram":
-        (logprob, ngram, backoff) = (float(entry[0]), tuple(entry[1].split()), float(entry[2] if len(entry)==3 else 0.0))
+        # the arpa file stores probs in log_10, we will switch here to log_e to be consistent with moses
+        (logprob, ngram, backoff) = (numpy.log(10) * float(entry[0]), tuple(entry[1].split()), numpy.log(10) * float(entry[2] if len(entry)==3 else 0.0))
         self.table[ngram] = ngram_stats(logprob, backoff)
 
   def begin(self):

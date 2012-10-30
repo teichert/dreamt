@@ -34,9 +34,15 @@ optparser.add_option("-k", "--translations-per-phrase", dest="k", default=1, typ
 optparser.add_option("-s", "--stack-size", dest="s", default=1, type="int", help="Maximum stack size (default=1)")
 optparser.add_option("-d", "--distortion-limit", dest="d", default=0, type="int", help="Distortion limit (default=0)")
 optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,  help="Verbose mode (default=off)")
+optparser.add_option("--weights-tm", dest="tmweights", default="",  help="Weights for Linear Translation Model (default=1.0 1.0 ... 1.0)")
+optparser.add_option("--weight-lm", dest="lmweight", default=1.0, type=float, help="Language Model Weight (default=1.0)")
+optparser.add_option("--weight-d", dest="dpenalty", default=0.0, type=float, help="Distortion Penalty (default=0.0)")
+optparser.add_option("--weight-w", dest="wpenalty", default=0.0, type=float, help="Word Penalty (default=0.0)")
 opts = optparser.parse_args()[0]
 
-tm = models.TM(opts.tm, opts.k)
+tm = models.TM(opts.tm, opts.k, opts.tmweights, opts.tmweights != "")
+for e in tm:
+  print tm[e]
 lm = models.LM(opts.lm)
 french = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:opts.num_sents]]
 
@@ -57,9 +63,9 @@ for f in french:
   # the first i words of the input sentence. You should generalize
   # this so that they can represent translations of *any* i words.
   dp_state = namedtuple("dp_state", "lm_state, bitmap")
-  hypothesis = namedtuple("hypothesis", "logprob, state, predecessor, phrase")
+  hypothesis = namedtuple("hypothesis", "logprob, state, predecessor, phrase, srcend")
   initial_state = dp_state(lm.begin(), 0)
-  initial_hypothesis = hypothesis(0.0, initial_state, None, None)
+  initial_hypothesis = hypothesis(0.0, initial_state, None, None, 0)
 
   stacks = [{} for _ in f] + [{}]
   stacks[0][initial_state] = initial_hypothesis
@@ -81,10 +87,11 @@ for f in french:
                   lm_state = h.state.lm_state
                   for word in phrase.english.split():
                     (lm_state, word_logprob) = lm.score(lm_state, word)
-                    logprob += word_logprob
-                  logprob += lm.end(lm_state) if new_bitmap == goal_bitmap else 0.0
+                    logprob += opts.lmweight * word_logprob - opts.wpenalty
+                  logprob += opts.lmweight * lm.end(lm_state) if new_bitmap == goal_bitmap else 0.0
+                  logprob -= opts.dpenalty * abs(j - k)
                   new_state = dp_state(lm_state, new_bitmap)
-                  new_hypothesis = hypothesis(logprob, new_state, h, phrase)
+                  new_hypothesis = hypothesis(logprob, new_state, h, phrase, k)
                   maybe_write("(%s, %s): %f + (%d, %d, %s): %f -> (%s, %s): %f\n" % 
                     (" ".join(h.state.lm_state), bitmap2str(h.state.bitmap,len(f)), h.logprob,
                      j, k, phrase.english, phrase.logprob,
@@ -102,4 +109,4 @@ for f in french:
       return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
     tm_logprob = extract_tm_logprob(winner)
     sys.stderr.write("LM = %f, TM = %f, Total = %f\n" % 
-      (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
+      (winner.logprob - tm_logprob, tm_logprob, winner.logprob)) # this is no longer correct if using other than lm and tm with 1.0 weights
