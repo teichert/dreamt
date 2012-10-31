@@ -20,14 +20,12 @@ def TM(filename, k, weights = "", dolog = False):
   w = string2array(weights)
   sys.stderr.write("Reading translation model from %s...\n" % (filename,))
   tm = {}
-  print w
   for line in open(filename).readlines():
     pieces = re.split(r" \|\|\| ", line.strip(), 3)
     (f, e, featstring) = pieces[0:3]
     features = string2array(featstring)
     if dolog:
       features = numpy.log(features)
-#    print features
     logprob = features.dot(w) if len(weights) > 0 else sum(features)
     tm.setdefault(tuple(f.split()), []).append(phrase(e, float(logprob)))
   for f in tm: # prune all but top k translations
