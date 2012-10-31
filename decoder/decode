@@ -41,8 +41,6 @@ optparser.add_option("--weight-w", dest="wpenalty", default=0.0, type=float, hel
 opts = optparser.parse_args()[0]
 
 tm = models.TM(opts.tm, opts.k, opts.tmweights, opts.tmweights != "")
-for e in tm:
-  print tm[e]
 lm = models.LM(opts.lm)
 french = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:opts.num_sents]]
 
